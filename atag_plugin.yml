@@ -1,0 +1,10 @@
+---
+id: atag
+title: TaskPaper @tag Highlighting
+author: Ralf
+description: Wraps @tag and @tag(value) for terminal color highlighting in the theme.
+homepage: https://github.com/rhsev/apex-plugin-taskpaper
+phase: pre_parse
+priority: 60
+pattern: '(@[a-zA-Z0-9_-]+(\([^)]*\))?)'
+replacement: '**$1**{.atag}'
