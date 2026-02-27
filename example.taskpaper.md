@@ -18,15 +18,14 @@ Work:
 	- Submit to apex-plugins @na
 	Backlog:
 		- Add Ruby fallback instructions
-		- Test on Linux
+		Test:
+			- Test on Linux
 
 ### Notes
-
 H3 and H4 headings are rendered as inline bold (no heading block) to avoid
 apex inserting a forced blank line after them.
 
 #### Details
-
 This keeps the output tight when alternating between headings and task blocks.
 
 ```yaml
