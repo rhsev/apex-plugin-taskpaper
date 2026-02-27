@@ -1,0 +1,17 @@
+---
+id: taskpaper
+title: TaskPaper Format
+author: Ralf Hülsmann
+description: >
+  Renders TaskPaper files as readable plain text. Project headers (lines ending
+  with a colon) are displayed in color with indentation. Tasks become escaped
+  dashes preserving indent levels. H3/H4 headings are rendered as inline bold
+  with hash prefix. Requires Crystal to compile on install.
+homepage: https://github.com/rhsev/apex-plugin-taskpaper
+repo: https://github.com/rhsev/apex-plugin-taskpaper.git
+phase: pre_parse
+priority: 50
+timeout_ms: 500
+post_install: "crystal build taskpaper_plugin.cr -o taskpaper_plugin --release"
+handler:
+  command: "${APEX_PLUGIN_DIR}/taskpaper_plugin"
