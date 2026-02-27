@@ -50,6 +50,27 @@ span_classes:
 apex file.md --plugins -t terminal256 --theme mytheme
 ```
 
+## Companion plugin: atag
+
+The `@tag` highlighting referenced in the theme config above is handled by a separate companion plugin. It wraps `@tag` and `@tag(value)` syntax in a bracketed span with class `atag` — independently of the TaskPaper structure, so it works in any Markdown file.
+
+Create `~/.config/apex/plugins/atag/plugin.yml` manually:
+
+```yaml
+---
+id: atag
+title: TaskPaper @tag Highlighting
+author: Ralf
+description: >
+  Wraps @tag and @tag(value) syntax in a bracketed span with class "atag"
+  for terminal color highlighting via span_classes in the theme.
+homepage: https://github.com/rhsev/apex-plugin-taskpaper
+phase: pre_parse
+priority: 60
+pattern: '(@[a-zA-Z0-9_-]+(\([^)]*\))?)'
+replacement: '**$1**{.atag}'
+```
+
 ## Requirements
 
 - [apex](https://github.com/ApexMarkdown/apex) ≥ 0.1.83
