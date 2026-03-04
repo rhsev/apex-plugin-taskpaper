@@ -4,6 +4,7 @@ payload = JSON.parse(STDIN.gets_to_end)
 text    = payload["text"].as_s
 
 # Handle YAML frontmatter — convert to bold key: value display
+fm_processed = false
 if text.starts_with?("---\n")
   fm_end_pos = text.index("\n---\n", 4) || text.index("\n...\n", 4)
   if fm_end_pos
@@ -17,6 +18,27 @@ if text.starts_with?("---\n")
       end
     end.join
     text = "\\-\\-\\-\n" + fm_display + "\\-\\-\\-\n\n" + rest
+    fm_processed = true
+  end
+end
+
+# Handle MultiMarkdown metadata — key: value pairs at document start, no delimiters
+unless fm_processed
+  lines = text.lines(chomp: false)
+  mmd_end = 0
+  while mmd_end < lines.size && lines[mmd_end].matches?(/\A[A-Za-z][A-Za-z0-9 _-]*:\s+\S/)
+    mmd_end += 1
+  end
+  if mmd_end > 0 && (mmd_end >= lines.size || lines[mmd_end].chomp.empty?)
+    mmd_display = lines[0...mmd_end].map do |line|
+      if (m = line.match(/\A([^:\n]+):\s*(.*)\n?\z/))
+        "**#{m[1]}:**{.fmkey} #{m[2]}  \n"
+      else
+        line
+      end
+    end.join
+    rest_start = mmd_end < lines.size ? mmd_end + 1 : mmd_end
+    text = mmd_display + "\n" + lines[rest_start..].join
   end
 end
 
