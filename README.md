@@ -59,9 +59,8 @@ Copy [`atag_plugin.yml`](atag_plugin.yml) from this repo to `~/.config/apex/plug
 ## Requirements
 
 - [apex](https://github.com/ApexMarkdown/apex) ≥ 0.1.83
-- [Crystal](https://crystal-lang.org) for compiling the binary on install
 
-No additional system libraries required. `libgc.1.dylib` is bundled with the plugin.
+No additional system libraries or compilers required. The `post_install` step downloads the pre-compiled macOS arm64 binary directly from the [latest GitHub Release](https://github.com/rhsev/apex-plugin-taskpaper/releases). `libgc.1.dylib` is bundled with the plugin.
 
 ## Installation
 
@@ -69,9 +68,13 @@ No additional system libraries required. `libgc.1.dylib` is bundled with the plu
 apex --install-plugin https://github.com/rhsev/apex-plugin-taskpaper.git
 ```
 
-The `post_install` step compiles the Crystal binary and patches it to use the bundled `libgc.1.dylib` via `install_name_tool`.
+To compile from source instead, run manually after install:
 
-A pre-compiled macOS arm64 binary is available as a [GitHub Release asset](https://github.com/rhsev/apex-plugin-taskpaper/releases) if you prefer not to compile. The release binary is already patched.
+```bash
+cd ~/.config/apex/plugins/taskpaper
+crystal build taskpaper_plugin.cr -o taskpaper_plugin --release
+install_name_tool -change /opt/homebrew/opt/bdw-gc/lib/libgc.1.dylib @loader_path/libgc.1.dylib taskpaper_plugin
+```
 
 ## Limitations
 
