@@ -63,7 +63,7 @@ result = text.each_line(chomp: false).map do |line|
     next line
   end
 
-  if (m = line.match(/\A(\t*)[^\s#>].*:\s*\z/)) && !line.matches?(/https?:/)
+  if (m = line.match(/\A(\t*)[^\s#>].*:\s*(@\w+(\([^)]*\))?\s*)*\z/))
     tabs   = m[1].size
     indent = "\u00A0\u00A0" * {tabs - 1, 0}.max
     cls    = "h4text"
