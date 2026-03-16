@@ -12,6 +12,6 @@ repo: https://github.com/rhsev/apex-plugin-taskpaper.git
 phase: pre_parse
 priority: 50
 timeout_ms: 500
-post_install: "crystal build taskpaper_plugin.cr -o taskpaper_plugin --release"
+post_install: "crystal build taskpaper_plugin.cr -o taskpaper_plugin --release && install_name_tool -change /opt/homebrew/opt/bdw-gc/lib/libgc.1.dylib @loader_path/libgc.1.dylib taskpaper_plugin"
 handler:
   command: "${APEX_PLUGIN_DIR}/taskpaper_plugin"
