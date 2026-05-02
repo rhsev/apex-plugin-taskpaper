@@ -60,7 +60,7 @@ Copy [`atag_plugin.yml`](atag_plugin.yml) from this repo to `~/.config/apex/plug
 
 - [apex](https://github.com/ApexMarkdown/apex) ≥ 0.1.83
 
-No additional system libraries or compilers required. The `post_install` step downloads the pre-compiled macOS arm64 binary directly from the [latest GitHub Release](https://github.com/rhsev/apex-plugin-taskpaper/releases). `libgc.1.dylib` is bundled with the plugin.
+No additional system libraries or compilers required. The `post_install` step downloads the pre-compiled macOS arm64 binary directly from the [latest GitHub Release](https://github.com/rhsev/apex-plugin-taskpaper/releases).
 
 ## Installation
 
@@ -68,12 +68,11 @@ No additional system libraries or compilers required. The `post_install` step do
 apex --install-plugin https://github.com/rhsev/apex-plugin-taskpaper.git
 ```
 
-To compile from source instead, run manually after install:
+To compile from source instead (requires Go ≥ 1.21), run manually after install:
 
 ```bash
 cd ~/.config/apex/plugins/taskpaper
-crystal build taskpaper_plugin.cr -o taskpaper_plugin --release
-install_name_tool -change /opt/homebrew/opt/bdw-gc/lib/libgc.1.dylib @loader_path/libgc.1.dylib taskpaper_plugin
+go build -o taskpaper_plugin taskpaper_plugin.go
 ```
 
 ## Limitations
@@ -81,24 +80,24 @@ install_name_tool -change /opt/homebrew/opt/bdw-gc/lib/libgc.1.dylib @loader_pat
 - **Paragraph breaks inside a project block**: each project and its tasks form a single paragraph via hard line breaks. A blank line separates sections, which is usually the right behavior in TaskPaper, but it means you can't have multi-paragraph content within a project block.
 - **Project depth**: nesting is tracked at any depth, but only two visual levels are distinguished: top-level projects (`h3text`) and all nested projects (`h4text`). Deeper nesting gets indentation but the same color as level 2.
 
-## Implementation: Ruby vs. Crystal
+## Implementation: Ruby vs. Go
 
 The repo includes two implementations with identical logic:
 
 | File | Language | Use |
 |---|---|---|
 | `taskpaper_plugin.rb` | Ruby | Reference implementation, portable, easy to read and modify |
-| `taskpaper_plugin.cr` | Crystal | Compiled to native binary, used as the actual handler |
+| `taskpaper_plugin.go` | Go | Compiled to native binary, used as the actual handler |
 
 Performance (hyperfine, on this machine):
 
 ```
 apex file.md --plugins   →  ~90 ms with Ruby-plugin
-apex file.md --plugins   →  ~26 ms with Crystal-plugin
+apex file.md --plugins   →  ~26 ms with Go-plugin
 apex file.md             →  ~11 ms
 ```
 
-The ~15 ms overhead is mostly based on the Inter-Process Communication, not the transformation by the Crystal plugin itself. 
+The ~15 ms overhead is mostly based on the Inter-Process Communication, not the transformation by the Go plugin itself.
 
 If you prefer to use the Ruby script directly, change `plugin.yml`:
 
@@ -107,4 +106,4 @@ handler:
   command: "ruby ${APEX_PLUGIN_DIR}/taskpaper_plugin.rb"
 ```
 
-This removes the Crystal dependency entirely.
+This removes the Go dependency entirely.
