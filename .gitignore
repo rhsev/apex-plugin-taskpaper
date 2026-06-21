@@ -1,2 +1,5 @@
 taskpaper_plugin
 *.dwarf
+NOTES.md
+taskpaper_plugin.cr
+taskpaper_plugin.rb

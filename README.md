@@ -80,30 +80,13 @@ go build -o taskpaper_plugin taskpaper_plugin.go
 - **Paragraph breaks inside a project block**: each project and its tasks form a single paragraph via hard line breaks. A blank line separates sections, which is usually the right behavior in TaskPaper, but it means you can't have multi-paragraph content within a project block.
 - **Project depth**: nesting is tracked at any depth, but only two visual levels are distinguished: top-level projects (`h3text`) and all nested projects (`h4text`). Deeper nesting gets indentation but the same color as level 2.
 
-## Implementation: Ruby vs. Go
+## Implementation
 
-The repo includes two implementations with identical logic:
-
-| File | Language | Use |
-|---|---|---|
-| `taskpaper_plugin.rb` | Ruby | Reference implementation, portable, easy to read and modify |
-| `taskpaper_plugin.go` | Go | Compiled to native binary, used as the actual handler |
-
-Performance (hyperfine, on this machine):
+The plugin is written in Go and compiled to a static native binary with no external dependencies. Performance (hyperfine, on this machine):
 
 ```
-apex file.md --plugins   →  ~90 ms with Ruby-plugin
-apex file.md --plugins   →  ~26 ms with Go-plugin
+apex file.md --plugins   →  ~26 ms
 apex file.md             →  ~11 ms
 ```
 
-The ~15 ms overhead is mostly based on the Inter-Process Communication, not the transformation by the Go plugin itself.
-
-If you prefer to use the Ruby script directly, change `plugin.yml`:
-
-```yaml
-handler:
-  command: "ruby ${APEX_PLUGIN_DIR}/taskpaper_plugin.rb"
-```
-
-This removes the Go dependency entirely.
+The ~15 ms overhead is Inter-Process Communication, not the transformation itself.
