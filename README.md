@@ -91,6 +91,10 @@ apex file.md             →  ~11 ms
 
 The ~15 ms overhead is Inter-Process Communication, not the transformation itself.
 
+## License
+
+MIT
+
 ---
 
 *Part of a family of plain-text tools — the [profile page](https://github.com/rhsev) has the map.*
