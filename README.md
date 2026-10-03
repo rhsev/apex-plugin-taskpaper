@@ -14,15 +14,18 @@ YAML frontmatter, normally hidden by Markdown renderers, is displayed too, since
 
 | Input | Output |
 |---|---|
-| `Project:` (line ending with `:`) | bold + cyan, top-level |
-| `\tSub Project:` (indented `:`) | bold + green, indented |
+| `Project:` (line ending with `:`, optionally followed by `@tags`) | bold, class `h4text` |
+| `\tSub Project:` (indented `:`) | bold, class `h4text`, indented |
 | `\t- Task @done` | `- Task @done`, indented, `@done` colored |
-| `### Section` | bold `\#\#\# Section`, no heading block |
-| `#### Sub` | bold `\#\#\#\# Sub`, no heading block |
-| `# Title` / `## Header` | standard Markdown H1/H2 |
-| YAML frontmatter | `key: value` pairs, keys colored |
+| `### Section` / `#### Sub` | bold `\#\#\# Section`, class `h3text`, no heading block |
+| `# Title` / `## Header` | real Markdown H1/H2, shown with their `#` marks |
+| YAML frontmatter | `key: value` pairs, keys colored (class `fmkey`) |
 
-H1/H2 become real Markdown headings. H3/H4 are rendered as inline bold to avoid the blank line apex inserts after heading blocks, keeping them visually distinct without disrupting flow.
+H1/H2 stay real Markdown headings. H3/H4 are rendered as inline bold to avoid the blank line apex inserts after heading blocks, keeping them visually distinct without disrupting flow.
+
+A line starting with `- ` is always a task, even when it ends with a colon; numbered or `+`/`*` lines such as `00. Inbox:` are projects. Tab- or space-indented `- ` lines directly under an ordinary top-level Markdown list item are left to apex as a nested list. Fenced code (```` ``` ```` and `~~~`) is never touched.
+
+Only the file's own frontmatter keys are displayed: the apex CLI merges `config.yml` settings (e.g. `terminal.width`) into the frontmatter it hands to plugins, and the plugin drops those by comparing against the file in `APEX_FILE_PATH`. Input from stdin has no file to compare against, so everything is shown.
 
 ## Screenshot
 
@@ -38,8 +41,8 @@ Add `span_classes` to your apex terminal theme (e.g. `~/.config/apex/terminal/th
 
 ```yaml
 span_classes:
-  h3text: b bright_cyan    # top-level project headers, H3 headings
-  h4text: b bright_green   # nested project headers, H4 headings
+  h3text: b bright_cyan    # H3/H4 headings
+  h4text: b bright_green   # project headers (all levels)
   atag:   b yellow         # @tags
   fmkey:  b cyan           # frontmatter keys
 ```
@@ -52,7 +55,7 @@ apex file.md --plugins -t terminal256 --theme mytheme
 
 ## Companion plugin: atag
 
-The `@tag` highlighting referenced in the theme config above is handled by a separate companion plugin. It wraps `@tag` and `@tag(value)` syntax in a bracketed span with class `atag` — independently of the TaskPaper structure, so it works in any Markdown file.
+The `@tag` highlighting referenced in the theme config above is handled by a separate companion plugin. It wraps `@tag` and `@tag(value)` syntax in a bracketed span with class `atag` — independently of the TaskPaper structure, so it works in any Markdown file. As in TaskPaper, a tag starts a line or follows whitespace, so mail addresses and URL handles (`youtube.com/@name`) are left alone. Being a plain regex, it cannot see code blocks: `@decorator` at the start of a line inside a fence is still wrapped.
 
 Copy [`atag_plugin.yml`](atag_plugin.yml) from this repo to `~/.config/apex/plugins/atag/plugin.yml`.
 
@@ -78,7 +81,8 @@ go build -o taskpaper_plugin taskpaper_plugin.go
 ## Limitations
 
 - **Paragraph breaks inside a project block**: each project and its tasks form a single paragraph via hard line breaks. A blank line separates sections, which is usually the right behavior in TaskPaper, but it means you can't have multi-paragraph content within a project block.
-- **Project depth**: nesting is tracked at any depth, but only two visual levels are distinguished: top-level projects (`h3text`) and all nested projects (`h4text`). Deeper nesting gets indentation but the same color as level 2.
+- **Project depth**: nesting is shown as indentation at any depth, but all projects share one class (`h4text`), so they share one color.
+- **Empty output**: apex replaces the document with whatever a plugin prints, whatever its exit status. If the binary is missing or cannot run (the release binary is macOS arm64 only), `apex --plugins` renders an empty page; build from source in that case.
 
 ## Implementation
 
@@ -94,7 +98,3 @@ The ~15 ms overhead is Inter-Process Communication, not the transformation itsel
 ## License
 
 MIT
-
----
-
-*Part of a family of plain-text tools — the [profile page](https://github.com/rhsev) has the map.*

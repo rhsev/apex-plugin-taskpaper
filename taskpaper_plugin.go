@@ -2,24 +2,38 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"regexp"
 	"strings"
 )
 
+// tagPattern is a TaskPaper @tag or @tag(value). Letters are Unicode, so
+// @fällig is one tag. Keep in sync with atag_plugin.yml.
+const tagPattern = `@[\p{L}\p{N}_-]+(?:\([^)]*\))?`
+
+// Whitespace classes in reProject and reListItem are spelled out (NBSP
+// counts) so the Swift port in mdpreview, where ICU's \s is Unicode-wide,
+// matches the same lines.
 var (
-	reFenceOpen  = regexp.MustCompile("^([ \t]*)(`{3,})")
-	reFenceClose = regexp.MustCompile("^([ \t]*)(`{3,})\\s*$")
-	reProject    = regexp.MustCompile(`^(\t*)[^\s#>].*:\s*(@\w+(\([^)]*\))?\s*)*$`)
+	reFenceOpen  = regexp.MustCompile("^([ \t]*)(`{3,}|~{3,})")
+	reFenceClose = regexp.MustCompile("^([ \t]*)(`{3,}|~{3,})\\s*$")
+	reProject    = regexp.MustCompile(`^(\t*)[^ \t\x{a0}#>].*:[ \t\x{a0}]*(?:` + tagPattern + `[ \t\x{a0}]*)*$`)
+	reListItem   = regexp.MustCompile(`^[ \t]*(?:[-*+]|[0-9]+[.)])(?:[ \t]|$)`)
 	reTabTask    = regexp.MustCompile(`^(\t+)- (.*)`)
 	reH12        = regexp.MustCompile(`^(##?) (.+)$`)
 	reH34        = regexp.MustCompile(`^(####?) (.+)$`)
 	reFMLine     = regexp.MustCompile(`^([^:\n]+):\s*(.*)`)
 	reMMDLine    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _-]*:\s+\S`)
+	reMMDKey     = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _-]*:[ \t]+\S`)
 )
 
-const doubleNbsp = "  "
+const doubleNbsp = "\u00a0\u00a0"
+
+// trailingSpace is trimmed off emitted lines; a trailing NBSP inside **…**
+// would keep the closing ** from closing.
+const trailingSpace = " \t\u00a0"
 
 func nbspIndent(n int) string {
 	if n <= 0 {
@@ -46,49 +60,142 @@ func splitLines(text string) []string {
 	return lines
 }
 
-func fmLineDisplay(line string) string {
-	chomped := strings.TrimRight(line, "\n")
-	if m := reFMLine.FindStringSubmatch(chomped); m != nil {
-		return "**" + m[1] + ":**{.fmkey} " + m[2] + "  \n"
+// yamlBlock splits a leading `---` block, closed by the first `---` or `...`
+// line, into its body and the text after the closing line.
+func yamlBlock(text string) (body, rest string, ok bool) {
+	if !strings.HasPrefix(text, "---\n") {
+		return "", "", false
 	}
-	return line
+	for off := 4; off < len(text); {
+		next := len(text)
+		line := text[off:]
+		if i := strings.IndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+			next = off + i + 1
+		}
+		if t := strings.TrimRight(line, " \t"); t == "---" || t == "..." {
+			return text[4:off], text[next:], true
+		}
+		off = next
+	}
+	return "", "", false
 }
 
-func processFrontmatter(text string) string {
-	if strings.HasPrefix(text, "---\n") {
-		endPos := -1
-		if i := strings.Index(text[4:], "\n---\n"); i >= 0 {
-			endPos = 4 + i
-		} else if i := strings.Index(text[4:], "\n...\n"); i >= 0 {
-			endPos = 4 + i
-		}
-		if endPos >= 0 {
-			var sb strings.Builder
-			for _, line := range splitLines(text[4:endPos]) {
-				sb.WriteString(fmLineDisplay(line))
+// mmdBlock returns the number of leading MultiMarkdown metadata lines: a run
+// of `Key: value` lines ended by a blank line or the end of the text.
+func mmdBlock(lines []string) int {
+	n := 0
+	for n < len(lines) && reMMDLine.MatchString(lines[n]) {
+		n++
+	}
+	if n > 0 && (n >= len(lines) || strings.TrimRight(lines[n], "\n") == "") {
+		return n
+	}
+	return 0
+}
+
+// metaKey returns the lowercased top-level key of a metadata line, or "" for
+// indented lines (nested values, list items) that belong to the key above.
+func metaKey(line string) string {
+	if line == "" || line[0] == ' ' || line[0] == '\t' {
+		return ""
+	}
+	if m := reFMLine.FindStringSubmatch(strings.TrimRight(line, "\n")); m != nil {
+		return strings.ToLower(strings.TrimSpace(m[1]))
+	}
+	return ""
+}
+
+// fileKeys returns the metadata keys the input file itself declares. The apex
+// CLI merges config.yml (terminal.width, …) into the frontmatter it hands to
+// plugins, so the file is the only record of what the document says. ok is
+// false when there is no file to ask (stdin); then every key is shown.
+func fileKeys() (keys map[string]bool, ok bool) {
+	path := os.Getenv("APEX_FILE_PATH")
+	if path == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	var lines []string
+	if body, _, found := yamlBlock(text); found {
+		lines = splitLines(body)
+	} else {
+		// apex's own MMD rule, looser than mmdBlock: no blank line needed, so
+		// a first line like "Inbox: @today" is metadata to apex.
+		for _, line := range splitLines(text) {
+			if !reMMDKey.MatchString(line) {
+				break
 			}
-			return "\\-\\-\\-\n" + sb.String() + "\\-\\-\\-\n\n" + text[endPos+5:]
+			lines = append(lines, line)
 		}
+	}
+	keys = map[string]bool{}
+	for _, line := range lines {
+		if k := metaKey(line); k != "" {
+			keys[k] = true
+		}
+	}
+	return keys, true
+}
+
+// displayMeta renders metadata lines as `**key:**{.fmkey} value` with hard
+// breaks, nested lines indented below their key. Keys the file doesn't
+// declare are dropped; apex flattens nested keys to `parent.child`.
+func displayMeta(lines []string) string {
+	keys, filter := fileKeys()
+	var sb strings.Builder
+	keep := true
+	for _, line := range lines {
+		if k := metaKey(line); k != "" {
+			keep = !filter || keys[k] || keys[strings.SplitN(k, ".", 2)[0]]
+		}
+		chomped := strings.TrimRight(line, "\n")
+		trimmed := strings.TrimLeft(chomped, " \t")
+		if !keep || trimmed == "" {
+			continue
+		}
+		indent := strings.Repeat("\u00a0", len(chomped)-len(trimmed))
+		if m := reFMLine.FindStringSubmatch(trimmed); m != nil && !strings.HasPrefix(trimmed, "- ") {
+			sb.WriteString(indent + "**" + m[1] + ":**{.fmkey} " + m[2] + "  \n")
+			continue
+		}
+		if strings.ContainsAny(trimmed[:1], "#->*+") {
+			trimmed = "\\" + trimmed
+		}
+		sb.WriteString(indent + trimmed + "  \n")
+	}
+	return sb.String()
+}
+
+// processFrontmatter splits leading metadata off as display text (head),
+// which must not go through processLines: a value ending in ":" would turn
+// into a project header.
+func processFrontmatter(text string) (head, rest string) {
+	if body, rest, ok := yamlBlock(text); ok {
+		if meta := displayMeta(splitLines(body)); meta != "" {
+			return "\\-\\-\\-\n" + meta + "\\-\\-\\-\n\n", rest
+		}
+		return "", rest
 	}
 
 	lines := splitLines(text)
-	mmdEnd := 0
-	for mmdEnd < len(lines) && reMMDLine.MatchString(lines[mmdEnd]) {
-		mmdEnd++
-	}
-	if mmdEnd > 0 && (mmdEnd >= len(lines) || strings.TrimRight(lines[mmdEnd], "\n") == "") {
-		var sb strings.Builder
-		for _, line := range lines[:mmdEnd] {
-			sb.WriteString(fmLineDisplay(line))
+	if n := mmdBlock(lines); n > 0 {
+		restStart := n
+		if n < len(lines) {
+			restStart = n + 1
 		}
-		restStart := mmdEnd
-		if mmdEnd < len(lines) {
-			restStart = mmdEnd + 1
+		rest := strings.Join(lines[restStart:], "")
+		if meta := displayMeta(lines[:n]); meta != "" {
+			return meta + "\n", rest
 		}
-		return sb.String() + "\n" + strings.Join(lines[restStart:], "")
+		return "", rest
 	}
 
-	return text
+	return "", text
 }
 
 func leadingSpaces(s string) int {
@@ -103,6 +210,11 @@ func leadingSpaces(s string) int {
 func processLines(text string) string {
 	fenceIndent := -1
 	fenceTicks := -1
+	var fenceChar byte
+	// afterList: the last non-blank line belongs to a Markdown list passed
+	// through as-is, so an indented "- " below it nests in that list rather
+	// than starting a TaskPaper task.
+	afterList := false
 	var sb strings.Builder
 
 	for _, line := range splitLines(text) {
@@ -112,12 +224,14 @@ func processLines(text string) string {
 			if m := reFenceOpen.FindStringSubmatch(chomped); m != nil {
 				fenceIndent = len(m[1])
 				fenceTicks = len(m[2])
+				fenceChar = m[2][0]
+				afterList = false
 				sb.WriteString(line)
 				continue
 			}
 		} else {
 			if m := reFenceClose.FindStringSubmatch(chomped); m != nil &&
-				len(m[1]) <= fenceIndent && len(m[2]) >= fenceTicks {
+				len(m[1]) <= fenceIndent && len(m[2]) >= fenceTicks && m[2][0] == fenceChar {
 				fenceIndent = -1
 				fenceTicks = -1
 			}
@@ -125,54 +239,80 @@ func processLines(text string) string {
 			continue
 		}
 
+		if strings.TrimSpace(chomped) == "" {
+			sb.WriteString(line)
+			continue
+		}
+
+		out := line
+		isListItem := reListItem.MatchString(chomped)
+		indented := chomped[0] == '\t' || chomped[0] == ' '
+
 		switch {
-		case reProject.MatchString(chomped):
+		case afterList && isListItem && indented:
+			// nested Markdown list: apex renders it
+
+		case reTabTask.MatchString(chomped):
+			// before projects: in TaskPaper, "- " makes a task even when it ends in ":"
+			m := reTabTask.FindStringSubmatch(chomped)
+			tabs := len(m[1])
+			out = nbspIndent(max(tabs-1, 0)) + "\\- " + strings.TrimRight(m[2], trailingSpace) + "  \n"
+
+		// "- x:" is a task in TaskPaper; "00. Inbox:" or "+ Ideas:" stay projects
+		case !strings.HasPrefix(strings.TrimLeft(chomped, "\t"), "- ") && reProject.MatchString(chomped):
 			m := reProject.FindStringSubmatch(chomped)
 			tabs := len(m[1])
 			noTabs := strings.TrimLeft(chomped, "\t")
-			sb.WriteString(nbspIndent(max(tabs-1, 0)) + "**" + strings.TrimRight(noTabs, " \t") + "**{.h4text}  \n")
-
-		case reTabTask.MatchString(chomped):
-			m := reTabTask.FindStringSubmatch(chomped)
-			tabs := len(m[1])
-			sb.WriteString(nbspIndent(max(tabs-1, 0)) + "\\- " + strings.TrimRight(m[2], " \t") + "  \n")
+			out = nbspIndent(max(tabs-1, 0)) + "**" + strings.TrimRight(noTabs, trailingSpace) + "**{.h4text}  \n"
 
 		case strings.HasPrefix(chomped, "    "):
 			spaces := leadingSpaces(chomped)
 			level := spaces / 4
 			rest := chomped[spaces:]
 			if strings.HasPrefix(rest, "- ") {
-				sb.WriteString(nbspIndent(max(level-1, 0)) + "\\- " + strings.TrimRight(rest[2:], " \t") + "  \n")
-			} else {
-				sb.WriteString(line)
+				out = nbspIndent(max(level-1, 0)) + "\\- " + strings.TrimRight(rest[2:], trailingSpace) + "  \n"
 			}
 
 		case reH12.MatchString(chomped):
 			m := reH12.FindStringSubmatch(chomped)
 			hashes := m[1]
-			content := strings.TrimRight(m[2], " \t")
+			content := strings.TrimRight(m[2], trailingSpace)
 			prefix := strings.Repeat("\\#", len(hashes))
-			sb.WriteString(hashes + " **" + prefix + " " + content + "**\n")
+			out = hashes + " **" + prefix + " " + content + "**\n"
 
 		case reH34.MatchString(chomped):
 			m := reH34.FindStringSubmatch(chomped)
 			prefix := strings.Repeat("\\#", len(m[1]))
-			sb.WriteString("**" + prefix + " " + strings.TrimRight(m[2], " \t") + "**{.h3text}  \n")
-
-		default:
-			sb.WriteString(line)
+			out = "**" + prefix + " " + strings.TrimRight(m[2], trailingSpace) + "**{.h3text}  \n"
 		}
+
+		// only a top-level item starts a Markdown list; indented ones continue it
+		afterList = isListItem && out == line && (afterList || !indented)
+		sb.WriteString(out)
 	}
 
 	return sb.String()
 }
 
 func main() {
-	data, _ := io.ReadAll(os.Stdin)
-	var payload map[string]json.RawMessage
-	json.Unmarshal(data, &payload)
-	var text string
-	json.Unmarshal(payload["text"], &text)
+	data, err := io.ReadAll(os.Stdin)
+	var payload struct {
+		Text *string `json:"text"`
+	}
+	if err == nil {
+		err = json.Unmarshal(data, &payload)
+	}
+	if err == nil && payload.Text == nil {
+		err = fmt.Errorf(`request has no "text" field`)
+	}
+	if err != nil {
+		// apex takes stdout as the new document whatever the exit status,
+		// so the most this can do is say why it came out empty.
+		fmt.Fprintln(os.Stderr, "taskpaper_plugin:", err)
+		os.Exit(1)
+	}
 
-	os.Stdout.WriteString(processLines(processFrontmatter(text)))
+	// cmark treats CRLF like LF; normalizing keeps every pattern LF-only.
+	head, rest := processFrontmatter(strings.ReplaceAll(*payload.Text, "\r\n", "\n"))
+	os.Stdout.WriteString(head + processLines(rest))
 }

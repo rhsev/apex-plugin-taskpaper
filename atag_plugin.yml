@@ -6,5 +6,8 @@ description: Wraps @tag and @tag(value) for terminal color highlighting in the t
 homepage: https://github.com/rhsev/apex-plugin-taskpaper
 phase: pre_parse
 priority: 60
-pattern: '(@[a-zA-Z0-9_-]+(\([^)]*\))?)'
-replacement: '**$1**{.atag}'
+# POSIX ERE, no lookbehind: the tag must start the line or follow whitespace
+# (TaskPaper's rule), so mail addresses and `@code` stay untouched. Any
+# non-ASCII byte counts as a letter, so @fällig is one tag.
+pattern: '(^|[[:space:]])(@([^[:space:][:punct:]]|[_-])+(\([^)]*\))?)'
+replacement: '$1**$2**{.atag}'
