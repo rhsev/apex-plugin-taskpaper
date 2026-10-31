@@ -10,7 +10,7 @@ import (
 )
 
 // tagPattern is a TaskPaper @tag or @tag(value). Letters are Unicode, so
-// @fällig is one tag. Keep in sync with atag_plugin.yml.
+// @fällig is one tag.
 const tagPattern = `@[\p{L}\p{N}_-]+(?:\([^)]*\))?`
 
 // Whitespace classes in reProject and reListItem are spelled out (NBSP
@@ -27,6 +27,10 @@ var (
 	reFMLine     = regexp.MustCompile(`^([^:\n]+):\s*(.*)`)
 	reMMDLine    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _-]*:\s+\S`)
 	reMMDKey     = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} _-]*:[ \t]+\S`)
+	// A tag starts the line or follows whitespace (TaskPaper's rule), so mail
+	// addresses and URL handles (youtube.com/@name) stay literal. RE2 has no
+	// lookbehind; the whitespace is captured and written back.
+	reTag = regexp.MustCompile(`(^|[ \t\x{a0}])(` + tagPattern + `)`)
 )
 
 const doubleNbsp = "\u00a0\u00a0"
@@ -207,6 +211,57 @@ func leadingSpaces(s string) int {
 	return len(s)
 }
 
+// applyTags wraps @tags as `**@tag**{.atag}` outside inline code spans,
+// which pass verbatim. Code blocks never get here: processLines hands fenced
+// lines through untouched.
+func applyTags(s string) string {
+	var sb strings.Builder
+	for s != "" {
+		open := strings.IndexByte(s, '`')
+		if open < 0 {
+			break
+		}
+		run := len(s[open:]) - len(strings.TrimLeft(s[open:], "`"))
+		closeAt := closingRun(s[open+run:], run)
+		if closeAt < 0 {
+			// An unmatched run is literal backticks; tags after it still count.
+			sb.WriteString(wrapTags(s[:open+run]))
+			s = s[open+run:]
+			continue
+		}
+		end := open + run + closeAt + run
+		sb.WriteString(wrapTags(s[:open]))
+		sb.WriteString(s[open:end])
+		s = s[end:]
+	}
+	sb.WriteString(wrapTags(s))
+	return sb.String()
+}
+
+// closingRun returns the index of the next run of exactly n backticks in s,
+// or -1.
+func closingRun(s string, n int) int {
+	for i := 0; i < len(s); {
+		if s[i] != '`' {
+			i++
+			continue
+		}
+		j := i
+		for j < len(s) && s[j] == '`' {
+			j++
+		}
+		if j-i == n {
+			return i
+		}
+		i = j
+	}
+	return -1
+}
+
+func wrapTags(s string) string {
+	return reTag.ReplaceAllString(s, "$1**$2**{.atag}")
+}
+
 func processLines(text string) string {
 	fenceIndent := -1
 	fenceTicks := -1
@@ -244,7 +299,12 @@ func processLines(text string) string {
 			continue
 		}
 
+		// @tags are wrapped only on task and prose lines. Project and heading
+		// lines are wrapped whole in `**…**{.class}`; a `**…**{.atag}` inside
+		// would nest emphasis, which apex misparses, so their tags ride along
+		// as plain text. passed: the line goes through as-is, tags aside.
 		out := line
+		passed := true
 		isListItem := reListItem.MatchString(chomped)
 		indented := chomped[0] == '\t' || chomped[0] == ' '
 
@@ -256,7 +316,8 @@ func processLines(text string) string {
 			// before projects: in TaskPaper, "- " makes a task even when it ends in ":"
 			m := reTabTask.FindStringSubmatch(chomped)
 			tabs := len(m[1])
-			out = nbspIndent(max(tabs-1, 0)) + "\\- " + strings.TrimRight(m[2], trailingSpace) + "  \n"
+			out = nbspIndent(max(tabs-1, 0)) + "\\- " + applyTags(strings.TrimRight(m[2], trailingSpace)) + "  \n"
+			passed = false
 
 		// "- x:" is a task in TaskPaper; "00. Inbox:" or "+ Ideas:" stay projects
 		case !strings.HasPrefix(strings.TrimLeft(chomped, "\t"), "- ") && reProject.MatchString(chomped):
@@ -264,13 +325,15 @@ func processLines(text string) string {
 			tabs := len(m[1])
 			noTabs := strings.TrimLeft(chomped, "\t")
 			out = nbspIndent(max(tabs-1, 0)) + "**" + strings.TrimRight(noTabs, trailingSpace) + "**{.h4text}  \n"
+			passed = false
 
 		case strings.HasPrefix(chomped, "    "):
 			spaces := leadingSpaces(chomped)
 			level := spaces / 4
 			rest := chomped[spaces:]
 			if strings.HasPrefix(rest, "- ") {
-				out = nbspIndent(max(level-1, 0)) + "\\- " + strings.TrimRight(rest[2:], trailingSpace) + "  \n"
+				out = nbspIndent(max(level-1, 0)) + "\\- " + applyTags(strings.TrimRight(rest[2:], trailingSpace)) + "  \n"
+				passed = false
 			}
 
 		case reH12.MatchString(chomped):
@@ -279,15 +342,20 @@ func processLines(text string) string {
 			content := strings.TrimRight(m[2], trailingSpace)
 			prefix := strings.Repeat("\\#", len(hashes))
 			out = hashes + " **" + prefix + " " + content + "**\n"
+			passed = false
 
 		case reH34.MatchString(chomped):
 			m := reH34.FindStringSubmatch(chomped)
 			prefix := strings.Repeat("\\#", len(m[1]))
 			out = "**" + prefix + " " + strings.TrimRight(m[2], trailingSpace) + "**{.h3text}  \n"
+			passed = false
 		}
 
 		// only a top-level item starts a Markdown list; indented ones continue it
-		afterList = isListItem && out == line && (afterList || !indented)
+		afterList = isListItem && passed && (afterList || !indented)
+		if passed {
+			out = applyTags(line)
+		}
 		sb.WriteString(out)
 	}
 

@@ -19,7 +19,7 @@ YAML frontmatter, normally hidden by Markdown renderers, is displayed too, since
 | `\t- Task @done` | `- Task @done`, indented, `@done` colored |
 | `### Section` / `#### Sub` | bold `\#\#\# Section`, class `h3text`, no heading block |
 | `# Title` / `## Header` | real Markdown H1/H2, shown with their `#` marks |
-| YAML frontmatter | `key: value` pairs, keys colored (class `fmkey`) |
+| YAML frontmatter or MultiMarkdown metadata | `key: value` pairs, keys colored (class `fmkey`) |
 
 H1/H2 stay real Markdown headings. H3/H4 are rendered as inline bold to avoid the blank line apex inserts after heading blocks, keeping them visually distinct without disrupting flow.
 
@@ -53,11 +53,11 @@ span_classes:
 apex file.md --plugins -t terminal256 --theme mytheme
 ```
 
-## Companion plugin: atag
+## Tags
 
-The `@tag` highlighting referenced in the theme config above is handled by a separate companion plugin. It wraps `@tag` and `@tag(value)` syntax in a bracketed span with class `atag` — independently of the TaskPaper structure, so it works in any Markdown file. As in TaskPaper, a tag starts a line or follows whitespace, so mail addresses and URL handles (`youtube.com/@name`) are left alone. Being a plain regex, it cannot see code blocks: `@decorator` at the start of a line inside a fence is still wrapped.
+The plugin wraps `@tag` and `@tag(value)` in a span with class `atag` on task and prose lines. As in TaskPaper, a tag starts a line or follows whitespace, so mail addresses and URL handles (`youtube.com/@name`) are left alone. Tags in inline code and in fenced code blocks stay as they are. Project and heading lines are styled as a whole, so their tags keep that line's style.
 
-Copy [`atag_plugin.yml`](atag_plugin.yml) from this repo to `~/.config/apex/plugins/atag/plugin.yml`.
+Earlier versions left this to a separate `atag` plugin. If `~/.config/apex/plugins/atag` exists, remove it, or tags inside code blocks still get wrapped.
 
 ## Requirements
 

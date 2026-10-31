@@ -6,7 +6,8 @@ description: >
   Renders TaskPaper files as readable plain text. Project headers (lines ending
   with a colon) are displayed in color with indentation. Tasks become escaped
   dashes preserving indent levels. H3/H4 headings are rendered as inline bold
-  with hash prefix. Installs a pre-compiled macOS arm64 binary.
+  with hash prefix. @tags get the atag class outside code. Installs a
+  pre-compiled macOS arm64 binary.
 homepage: https://github.com/rhsev/apex-plugin-taskpaper
 repo: https://github.com/rhsev/apex-plugin-taskpaper.git
 phase: pre_parse
