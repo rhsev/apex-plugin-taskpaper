@@ -31,3 +31,19 @@ func TestNestedListKeepsTags(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+func TestTerminalDropsFrontmatter(t *testing.T) {
+	t.Setenv("APEX_FILE_PATH", "")
+	cases := []struct{ format, in, wantHead, wantRest string }{
+		{"terminal256", "---\ntitle: X\n---\n\n# H\n", "", "\n# H\n"},
+		{"terminal", "Title: X\n\nText\n", "", "Text\n"},
+		{"", "---\ntitle: X\n---\n\n# H\n", "\\-\\-\\-\n**title:**{.fmkey} X  \n\\-\\-\\-\n\n", "\n# H\n"},
+	}
+	for _, c := range cases {
+		t.Setenv("APEX_TARGET_FORMAT", c.format)
+		head, rest := processFrontmatter(c.in)
+		if head != c.wantHead || rest != c.wantRest {
+			t.Errorf("format %q: got (%q, %q) want (%q, %q)", c.format, head, rest, c.wantHead, c.wantRest)
+		}
+	}
+}

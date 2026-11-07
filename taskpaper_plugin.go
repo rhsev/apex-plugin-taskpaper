@@ -175,11 +175,22 @@ func displayMeta(lines []string) string {
 	return sb.String()
 }
 
+// terminalTarget reports whether the output is apex's terminal format. Since
+// 1.1.50 apex prints the document's metadata above terminal output itself.
+// apex does not tell plugins the target format, so the caller sets
+// APEX_TARGET_FORMAT (e.g. terminal256).
+func terminalTarget() bool {
+	return strings.HasPrefix(os.Getenv("APEX_TARGET_FORMAT"), "terminal")
+}
+
 // processFrontmatter splits leading metadata off as display text (head),
 // which must not go through processLines: a value ending in ":" would turn
-// into a project header.
+// into a project header. For terminal output head stays empty.
 func processFrontmatter(text string) (head, rest string) {
 	if body, rest, ok := yamlBlock(text); ok {
+		if terminalTarget() {
+			return "", rest
+		}
 		if meta := displayMeta(splitLines(body)); meta != "" {
 			return "\\-\\-\\-\n" + meta + "\\-\\-\\-\n\n", rest
 		}
@@ -193,6 +204,9 @@ func processFrontmatter(text string) (head, rest string) {
 			restStart = n + 1
 		}
 		rest := strings.Join(lines[restStart:], "")
+		if terminalTarget() {
+			return "", rest
+		}
 		if meta := displayMeta(lines[:n]); meta != "" {
 			return meta + "\n", rest
 		}

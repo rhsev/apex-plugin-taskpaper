@@ -27,6 +27,12 @@ A line starting with `- ` is always a task, even when it ends with a colon; numb
 
 Only the file's own frontmatter keys are displayed: the apex CLI merges `config.yml` settings (e.g. `terminal.width`) into the frontmatter it hands to plugins, and the plugin drops those by comparing against the file in `APEX_FILE_PATH`. Input from stdin has no file to compare against, so everything is shown.
 
+Since version 1.1.50, apex prints the document's metadata above terminal output itself. apex does not tell plugins the target format, so the plugin reads `APEX_TARGET_FORMAT` from the environment. When it starts with `terminal`, the plugin removes the frontmatter and leaves the display to apex. The theme keys `metadata.key`, `metadata.color` and `metadata.border` style that block.
+
+```bash
+APEX_TARGET_FORMAT=terminal256 apex file.md --plugins -t terminal256 --theme mytheme
+```
+
 ## Screenshot
 
 ![apex rendering a TaskPaper/Markdown file in the terminal](screenshot.png)
@@ -45,6 +51,11 @@ span_classes:
   h4text: b bright_green   # project headers (all levels)
   atag:   b yellow         # @tags
   fmkey:  b cyan           # frontmatter keys
+
+metadata:                  # apex's own metadata block in terminal output
+  key: b cyan
+  color: default
+  border: default
 ```
 
 `b` = bold. Use with:
